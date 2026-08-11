@@ -1,69 +1,333 @@
-import Image from "next/image";
+"use client";
+
+// Main MindCheck check-in page.
+
+import { useEffect, useState } from "react";
 
 export default function Home() {
+  const [moodScore, setMoodScore] = useState<number | null>(null);
+  const [note, setNote] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [checkIns, setCheckIns] = useState<
+    {
+      id: string;
+      moodScore: number;
+      note: string | null;
+      createdAt: string;
+    }[]
+  >([]);
+
+  const [showCheckIns, setShowCheckIns] = useState(false);
+
+  // Average mood
+  const averageMood =
+    checkIns.length > 0
+      ? (
+          checkIns.reduce(
+            (sum, checkIn) => sum + checkIn.moodScore,
+            0
+          ) / checkIns.length
+        ).toFixed(1)
+      : "—";
+
+  // Highest mood
+  const highestMood =
+    checkIns.length > 0
+      ? Math.max(...checkIns.map((checkIn) => checkIn.moodScore))
+      : "—";
+
+  // Lowest mood
+  const lowestMood =
+    checkIns.length > 0
+      ? Math.min(...checkIns.map((checkIn) => checkIn.moodScore))
+      : "—";
+
+  // Mood trend
+  let moodTrend = "—";
+
+  if (checkIns.length >= 2) {
+    const latestMood = checkIns[0].moodScore;
+    const previousMood = checkIns[1].moodScore;
+
+    if (latestMood > previousMood) {
+      moodTrend = "↑ Increasing";
+    } else if (latestMood < previousMood) {
+      moodTrend = "↓ Decreasing";
+    } else {
+      moodTrend = "→ Stable";
+    }
+  }
+
+  // Load previous check-ins
+  useEffect(() => {
+    async function loadCheckIns() {
+      try {
+        const response = await fetch("/api/checkins");
+
+        if (!response.ok) {
+          throw new Error("Failed to load check-ins");
+        }
+
+        const data = await response.json();
+        setCheckIns(data.checkIns);
+      } catch (error) {
+        console.error("Failed to load check-ins:", error);
+      }
+    }
+
+    loadCheckIns();
+  }, []);
+
+  // Submit a check-in
+  async function submitCheckIn() {
+    if (moodScore === null) {
+      setMessage("Please choose a mood score first.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/checkins", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          moodScore,
+          note: note || null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Check-in failed");
+      }
+
+      setMessage("Check-in saved!");
+      setNote("");
+      setMoodScore(null);
+
+      // Reload check-ins so the new entry appears immediately
+      const updatedResponse = await fetch("/api/checkins");
+
+      if (updatedResponse.ok) {
+        const updatedData = await updatedResponse.json();
+        setCheckIns(updatedData.checkIns);
+      }
+    } catch (error) {
+      console.error(error);
+      setMessage("Something went wrong. Please try again.");
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="min-h-screen bg-white p-8">
+      <div className="mx-auto flex w-full max-w-md flex-col items-center">
+        {/* Title */}
+        <h1 className="text-4xl font-bold text-black">
+          MindCheck
+        </h1>
+
+        <p className="mt-4 text-gray-600">
+          How are you feeling today?
+        </p>
+
+        {/* Mood score buttons */}
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
+            <button
+              key={score}
+              onClick={() => setMoodScore(score)}
+              className={`h-12 w-12 rounded-lg border transition-all ${
+                moodScore === score
+                  ? "scale-110 bg-black text-white shadow-md"
+                  : "bg-white text-black hover:bg-gray-100"
+              }`}
+            >
+              {score}
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-2 text-sm text-gray-500">
+          1 = lowest, 10 = highest
+        </p>
+
+        {/* Optional note */}
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Add an optional note..."
+          className="mt-6 h-32 w-full rounded-lg border border-gray-300 p-3 text-black"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+        {/* Submit button */}
+        <button
+          onClick={submitCheckIn}
+          className="mt-4 rounded-lg bg-black px-6 py-3 text-white transition-all hover:scale-105 hover:bg-gray-800 active:scale-95"
+        >
+          Submit Check-In
+        </button>
+
+        {/* Result message */}
+        {message && (
+          <p className="mt-4 text-gray-700">
+            {message}
           </p>
+        )}
+
+        {/* Mood Summary */}
+        <div className="mt-8 w-full">
+          <h2 className="text-xl font-semibold text-black">
+            Mood Summary
+          </h2>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {/* Average */}
+            <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
+              <p className="text-sm text-gray-500">
+                Average
+              </p>
+
+              <p className="mt-1 text-2xl font-semibold text-black">
+                {averageMood}
+              </p>
+            </div>
+
+            {/* Highest */}
+            <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
+              <p className="text-sm text-gray-500">
+                Highest
+              </p>
+
+              <p className="mt-1 text-2xl font-semibold text-black">
+                {highestMood}
+              </p>
+            </div>
+
+            {/* Lowest */}
+            <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
+              <p className="text-sm text-gray-500">
+                Lowest
+              </p>
+
+              <p className="mt-1 text-2xl font-semibold text-black">
+                {lowestMood}
+              </p>
+            </div>
+
+            {/* Trend */}
+            <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
+              <p className="text-sm text-gray-500">
+                Trend
+              </p>
+
+              <p className="mt-1 whitespace-nowrap text-base font-semibold text-black">
+                {moodTrend}
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Mood History */}
+        <div className="mt-8 w-full">
+          <h2 className="text-xl font-semibold text-black">
+            Mood History
+          </h2>
+
+          <div className="mt-4 rounded-lg border border-gray-200 p-4">
+            <div className="flex h-64 items-end gap-2">
+              {checkIns
+                .slice()
+                .reverse()
+                .slice(-10)
+                .map((checkIn) => (
+                  <div
+                    key={checkIn.id}
+                    className="flex h-full flex-1 flex-col items-center justify-end"
+                  >
+                    {/* Mood score */}
+                    <span className="mb-1 text-xs text-gray-500">
+                      {checkIn.moodScore}
+                    </span>
+
+                    {/* Bar */}
+                    <div
+                      className="w-full rounded-t-md bg-black"
+                      style={{
+                        height: `${checkIn.moodScore * 10}%`,
+                      }}
+                    />
+
+                    {/* Time */}
+                    <span className="mt-2 text-xs text-gray-500">
+                      {new Date(
+                        checkIn.createdAt
+                      ).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
         </div>
-      </main>
-    </div>
+
+        {/* Recent Check-Ins */}
+        <div className="mt-8 w-full">
+          <button
+            onClick={() => setShowCheckIns(!showCheckIns)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <h2 className="text-xl font-semibold text-black">
+              Your Recent Check-Ins
+            </h2>
+
+            <span className="text-lg text-gray-500">
+              {showCheckIns ? "▲" : "▼"}
+            </span>
+          </button>
+
+          {/* Check-ins only appear when expanded */}
+          {showCheckIns && (
+            <div className="mt-4 space-y-2">
+              {checkIns.length === 0 ? (
+                <p className="text-gray-500">
+                  No check-ins yet.
+                </p>
+              ) : (
+                checkIns.map((checkIn) => (
+                  <div
+                    key={checkIn.id}
+                    className="rounded-lg border border-gray-200 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-black">
+                        {checkIn.moodScore}/10
+                      </span>
+
+                      <span className="text-sm text-gray-500">
+                        {new Date(
+                          checkIn.createdAt
+                        ).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+
+                    {checkIn.note && (
+                      <p className="mt-1 text-gray-600">
+                        {checkIn.note}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
   );
 }
