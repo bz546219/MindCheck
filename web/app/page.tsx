@@ -8,7 +8,7 @@ export default function Home() {
   const [moodScore, setMoodScore] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
-
+  const [showSafetyMessage, setShowSafetyMessage] = useState(false);
   const [checkIns, setCheckIns] = useState<
     {
       id: string;
@@ -103,8 +103,12 @@ export default function Home() {
       }
 
       setMessage("Check-in saved!");
-      setNote("");
-      setMoodScore(null);
+
+// Show the safety message if the mood score is low.
+setShowSafetyMessage(moodScore <= 3);
+
+setNote("");
+setMoodScore(null);
 
       // Reload check-ins so the new entry appears immediately
       const updatedResponse = await fetch("/api/checkins");
@@ -174,6 +178,19 @@ export default function Home() {
             {message}
           </p>
         )}
+
+        {showSafetyMessage && (
+  <div className="mt-4 w-full max-w-md rounded-lg border border-gray-300 bg-gray-50 p-4">
+    <p className="font-semibold text-black">
+      You may need some extra support right now.
+    </p>
+
+    <p className="mt-2 text-sm text-gray-600">
+      Consider reaching out to a trusted adult, friend, family member,
+      counselor, or another person you trust.
+    </p>
+  </div>
+)}
 
         {/* Mood Summary */}
         <div className="mt-8 w-full">

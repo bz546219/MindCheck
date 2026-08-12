@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../lib/prisma";
 import { verifySessionToken } from "../../lib/auth";
+import { maybeSendAlert } from "../../lib/alerts";
 
 export async function POST(req: NextRequest) {
   // Get the user's session from their browser cookie.
@@ -32,6 +33,9 @@ export async function POST(req: NextRequest) {
       longitude,
     },
   });
+
+  // Check whether this check-in should trigger a trusted-contact alert.
+await maybeSendAlert(checkIn);
 
   // Send the saved check-in back to the app.
   return NextResponse.json({ checkIn });
