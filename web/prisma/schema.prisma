@@ -1,13 +1,135 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Creates the tool our app uses to talk to the database.
 
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
 }
 
+// Tells our app that we are using PostgreSQL as our database.
+
 datasource db {
   provider = "postgresql"
+}
+
+
+// USER
+// Stores information about each person using MindCheck.
+
+model User {
+  // Unique ID for the user.
+  id             String          @id @default(cuid())
+
+  // True if the person is using MindCheck anonymously.
+  isAnonymous    Boolean         @default(false)
+
+  // Email address, if the person has an account.
+  email          String?         @unique
+
+  // Password information for registered accounts.
+  passwordHash   String?
+
+  // When the account was created.
+  createdAt      DateTime        @default(now())
+
+  // All of this user's check-ins.
+  checkIns       CheckIn[]
+
+  // This user's trusted contact, if they have one.
+  trustedContact TrustedContact?
+}
+
+
+// TRUSTED CONTACT
+// Stores the person who can receive an alert if the user's mood score is very low
+model TrustedContact {
+  // Unique ID for the trusted contact.
+  id             String   @id @default(cuid())
+
+  // Which user this contact belongs to.
+  userId         String   @unique
+
+  // Connects the contact to that user.
+  user           User     @relation(fields: [userId], references: [id])
+
+  // Contact's name.
+  name           String
+
+  // Contact's email address, if provided.
+  email          String?
+
+  // Contact's phone number, if provided.
+  phone          String?
+
+  // Score that triggers an alert.
+  // Example: if this is 3, scores of 1, 2, or 3 trigger an alert.
+  thresholdScore Int      @default(3)
+
+  // When the contact was added.
+  createdAt      DateTime @default(now())
+}
+
+
+// CHECK-IN
+// Stores each time a user checks in with MindCheck.
+
+model CheckIn {
+  // Unique ID for this check-in.
+  id         String   @id @default(cuid())
+
+  // Which user made the check-in.
+  userId     String
+
+  // Connects the check-in to that user.
+  user       User     @relation(fields: [userId], references: [id])
+
+  // The user's mood score from 1 to 10.
+  moodScore  Int
+
+  // Optional message from the user.
+  note       String?
+
+  // User's location, if they choose to share it.
+  latitude   Float?
+  longitude  Float?
+
+  // When the check-in happened.
+  createdAt  DateTime @default(now())
+
+  // Whether an alert was sent for this check-in.
+  alertSent  Boolean  @default(false)
+}
+
+
+// COMPLIMENT
+// Stores positive messages that MindCheck can show users.
+
+model Compliment {
+  // Unique ID for the compliment.
+  id   String @id @default(cuid())
+
+  // The actual compliment.
+  text String
+}
+
+
+// ALERT LOG
+// Keeps track of alerts that MindCheck tried to send.
+
+model AlertLog {
+  // Unique ID for the alert.
+  id         String   @id @default(cuid())
+
+  // Which check-in caused the alert.
+  checkInId  String
+
+  // How the alert was sent.
+  // Example: "email" or "sms".
+  method     String
+
+  // Whether the alert worked.
+  // Example: "sent" or "failed".
+  status     String
+
+  // When the alert was created.
+  createdAt  DateTime @default(now())
 }
