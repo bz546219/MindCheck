@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../lib/prisma";
 import { verifySessionToken } from "../../lib/auth";
 import { maybeSendAlert } from "../../lib/alerts";
+import { randomCompliment } from "../../lib/compliments";
 
 export async function POST(req: NextRequest) {
   // Get the user's session from their browser cookie.
@@ -35,10 +36,18 @@ export async function POST(req: NextRequest) {
   });
 
   // Check whether this check-in should trigger a trusted-contact alert.
-await maybeSendAlert(checkIn);
+const alertResult = await maybeSendAlert(checkIn);
+
+// Choose a compliment to show after the check-in.
+const compliment = await randomCompliment();
 
   // Send the saved check-in back to the app.
-  return NextResponse.json({ checkIn });
+  // Send the check-in and compliment back to the frontend.
+return NextResponse.json({
+  checkIn,
+  alertSent: alertResult.sent,
+  compliment,
+});
 }
 
 // Handles getting a user's previous check-ins.
