@@ -20,6 +20,10 @@ export default function Home() {
   // Shows the extra support message for very low scores.
   const [showSafetyMessage, setShowSafetyMessage] = useState(false);
 
+  // Stores the user's location if they choose to share it.
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+
   // Stores previous check-ins.
   const [checkIns, setCheckIns] = useState<
     {
@@ -93,6 +97,26 @@ export default function Home() {
     loadCheckIns();
   }, []);
 
+  // Ask the user for permission to share their location.
+  function getLocation() {
+    if (!navigator.geolocation) {
+      setMessage("Location is not supported by this browser.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLatitude(position.coords.latitude);
+        setLongitude(position.coords.longitude);
+
+        setMessage("Location shared.");
+      },
+      () => {
+        setMessage("Location was not shared.");
+      }
+    );
+  }
+
   // Submit a new check-in.
   async function submitCheckIn() {
     // Make sure the user selected a mood score.
@@ -110,6 +134,10 @@ export default function Home() {
         body: JSON.stringify({
           moodScore,
           note: note || null,
+
+          // Send the location only if the user chose to share it.
+          latitude,
+          longitude,
         }),
       });
 
@@ -189,6 +217,14 @@ export default function Home() {
           placeholder="Add an optional note..."
           className="mt-6 h-32 w-full rounded-lg border border-gray-300 p-3 text-black"
         />
+
+        {/* Share location */}
+        <button
+          onClick={getLocation}
+          className="mt-4 rounded-lg border border-gray-300 px-6 py-3 text-black hover:bg-gray-100"
+        >
+          Share Location
+        </button>
 
         {/* Submit button */}
         <button
@@ -304,12 +340,10 @@ export default function Home() {
                     key={checkIn.id}
                     className="flex h-full flex-1 flex-col items-center justify-end"
                   >
-                    {/* Mood score */}
                     <span className="mb-1 text-xs text-gray-500">
                       {checkIn.moodScore}
                     </span>
 
-                    {/* Bar */}
                     <div
                       className="w-full rounded-t-md bg-black"
                       style={{
@@ -317,7 +351,6 @@ export default function Home() {
                       }}
                     />
 
-                    {/* Time */}
                     <span className="mt-2 text-xs text-gray-500">
                       {new Date(
                         checkIn.createdAt
@@ -347,7 +380,6 @@ export default function Home() {
             </span>
           </button>
 
-          {/* Check-ins only appear when expanded */}
           {showCheckIns && (
             <div className="mt-4 space-y-2">
               {checkIns.length === 0 ? (
