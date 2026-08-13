@@ -1,43 +1,36 @@
 "use client";
 
-// Main MindCheck check-in page.
-
 import { useEffect, useState } from "react";
 
+type CheckIn = {
+  id: string;
+  moodScore: number;
+  note: string | null;
+  createdAt: string;
+};
+
+type Resource = {
+  name: string;
+  type: string;
+  phone?: string;
+  description: string;
+  url?: string;
+};
+
 export default function Home() {
-  // Stores the compliment returned by the backend.
   const [compliment, setCompliment] = useState("");
-
-  // Stores the currently selected mood score.
   const [moodScore, setMoodScore] = useState<number | null>(null);
-
-  // Stores the optional note.
   const [note, setNote] = useState("");
-
-  // Stores messages such as "Check-in saved!".
   const [message, setMessage] = useState("");
-
-  // Shows the extra support message for very low scores.
   const [showSafetyMessage, setShowSafetyMessage] = useState(false);
 
-  // Stores the user's location if they choose to share it.
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
 
-  // Stores previous check-ins.
-  const [checkIns, setCheckIns] = useState<
-    {
-      id: string;
-      moodScore: number;
-      note: string | null;
-      createdAt: string;
-    }[]
-  >([]);
-
-  // Controls whether recent check-ins are expanded.
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [showCheckIns, setShowCheckIns] = useState(false);
 
-  // Calculate average mood.
   const averageMood =
     checkIns.length > 0
       ? (
@@ -48,19 +41,16 @@ export default function Home() {
         ).toFixed(1)
       : "—";
 
-  // Find highest mood.
   const highestMood =
     checkIns.length > 0
       ? Math.max(...checkIns.map((checkIn) => checkIn.moodScore))
       : "—";
 
-  // Find lowest mood.
   const lowestMood =
     checkIns.length > 0
       ? Math.min(...checkIns.map((checkIn) => checkIn.moodScore))
       : "—";
 
-  // Calculate mood trend.
   let moodTrend = "—";
 
   if (checkIns.length >= 2) {
@@ -76,7 +66,7 @@ export default function Home() {
     }
   }
 
-  // Load previous check-ins when the page opens.
+  // Load previous check-ins.
   useEffect(() => {
     async function loadCheckIns() {
       try {
@@ -97,6 +87,28 @@ export default function Home() {
     loadCheckIns();
   }, []);
 
+  // Load support resources.
+  async function loadResources(
+    currentLatitude: number,
+    currentLongitude: number
+  ) {
+    try {
+      const response = await fetch(
+        `/api/resources?lat=${currentLatitude}&lng=${currentLongitude}`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load resources");
+      }
+
+      const data = await response.json();
+
+      setResources(data.resources ?? []);
+    } catch (error) {
+      console.error("Failed to load resources:", error);
+    }
+  }
+
   // Ask the user for permission to share their location.
   function getLocation() {
     if (!navigator.geolocation) {
@@ -106,10 +118,18 @@ export default function Home() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setLatitude(position.coords.latitude);
-        setLongitude(position.coords.longitude);
+        const currentLatitude = position.coords.latitude;
+        const currentLongitude = position.coords.longitude;
+
+        setLatitude(currentLatitude);
+        setLongitude(currentLongitude);
 
         setMessage("Location shared.");
+
+        loadResources(
+          currentLatitude,
+          currentLongitude
+        );
       },
       () => {
         setMessage("Location was not shared.");
@@ -119,7 +139,6 @@ export default function Home() {
 
   // Submit a new check-in.
   async function submitCheckIn() {
-    // Make sure the user selected a mood score.
     if (moodScore === null) {
       setMessage("Please choose a mood score first.");
       return;
@@ -134,8 +153,6 @@ export default function Home() {
         body: JSON.stringify({
           moodScore,
           note: note || null,
-
-          // Send the location only if the user chose to share it.
           latitude,
           longitude,
         }),
@@ -145,23 +162,15 @@ export default function Home() {
         throw new Error("Check-in failed");
       }
 
-      // Get the check-in response from the backend.
       const data = await response.json();
 
-      // Save the compliment returned by the backend.
       setCompliment(data.compliment);
-
-      // Show the success message.
       setMessage("Check-in saved!");
-
-      // Show the safety message if the mood score is low.
       setShowSafetyMessage(moodScore <= 3);
 
-      // Clear the form.
       setNote("");
       setMoodScore(null);
 
-      // Reload check-ins so the new entry appears immediately.
       const updatedResponse = await fetch("/api/checkins");
 
       if (updatedResponse.ok) {
@@ -189,7 +198,7 @@ export default function Home() {
           How are you feeling today?
         </p>
 
-        {/* Mood score buttons */}
+        {/* Mood scores */}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
             <button
@@ -210,7 +219,7 @@ export default function Home() {
           1 = lowest, 10 = highest
         </p>
 
-        {/* Optional note */}
+        {/* Note */}
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -218,7 +227,7 @@ export default function Home() {
           className="mt-6 h-32 w-full rounded-lg border border-gray-300 p-3 text-black"
         />
 
-        {/* Share location */}
+        {/* Location */}
         <button
           onClick={getLocation}
           className="mt-4 rounded-lg border border-gray-300 px-6 py-3 text-black hover:bg-gray-100"
@@ -226,7 +235,7 @@ export default function Home() {
           Share Location
         </button>
 
-        {/* Submit button */}
+        {/* Submit */}
         <button
           onClick={submitCheckIn}
           className="mt-4 rounded-lg bg-black px-6 py-3 text-white transition-all hover:scale-105 hover:bg-gray-800 active:scale-95"
@@ -234,7 +243,7 @@ export default function Home() {
           Submit Check-In
         </button>
 
-        {/* Result message */}
+        {/* Message */}
         {message && (
           <p className="mt-4 text-gray-700">
             {message}
@@ -251,6 +260,57 @@ export default function Home() {
             <p className="mt-1 text-gray-700">
               {compliment}
             </p>
+          </div>
+        )}
+
+        {/* Support resources */}
+        {resources.length > 0 && (
+          <div className="mt-6 w-full">
+            <h2 className="text-xl font-semibold text-black">
+              Support Resources
+            </h2>
+
+            <p className="mt-2 text-sm text-gray-600">
+              Here are support options available to you.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {resources.map((resource) => (
+                <div
+                  key={`${resource.name}-${resource.type}`}
+                  className="rounded-lg border border-gray-200 p-4"
+                >
+                  {resource.url ? (
+                    <a
+                      href={resource.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-blue-700 underline hover:text-blue-900"
+                    >
+                      {resource.name}
+                    </a>
+                  ) : (
+                    <h3 className="font-semibold text-black">
+                      {resource.name}
+                    </h3>
+                  )}
+
+                  <p className="mt-1 text-sm text-gray-500">
+                    {resource.type}
+                  </p>
+
+                  <p className="mt-2 text-sm text-gray-700">
+                    {resource.description}
+                  </p>
+
+                  {resource.phone && (
+                    <p className="mt-2 text-sm font-medium text-black">
+                      Phone: {resource.phone}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -276,7 +336,6 @@ export default function Home() {
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
 
-            {/* Average */}
             <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
               <p className="text-sm text-gray-500">
                 Average
@@ -287,7 +346,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Highest */}
             <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
               <p className="text-sm text-gray-500">
                 Highest
@@ -298,7 +356,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Lowest */}
             <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
               <p className="text-sm text-gray-500">
                 Lowest
@@ -309,7 +366,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Trend */}
             <div className="flex min-h-[96px] flex-col items-center justify-center rounded-lg border border-gray-200 p-3 text-center">
               <p className="text-sm text-gray-500">
                 Trend
