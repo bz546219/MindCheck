@@ -1,5 +1,3 @@
-// Handles saving a user's check-in.
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../lib/prisma";
 import { verifySessionToken } from "../../lib/auth";
@@ -7,80 +5,146 @@ import { maybeSendAlert } from "../../lib/alerts";
 import { randomCompliment } from "../../lib/compliments";
 
 export async function POST(req: NextRequest) {
-  // Get the user's session from their browser cookie.
-  const token = req.cookies.get("session")?.value;
+  try {
+    // Support both:
+    // 1. Web browser session cookies
+    // 2. Mobile app Bearer tokens
 
-  // Check that the session is valid.
-  const userId = token ? await verifySessionToken(token) : null;
+    const cookieToken = req.cookies.get("session")?.value;
 
-  // Stop if the user isn't logged in.
-  if (!userId) {
-    return NextResponse.json(
-      { error: "Not authenticated" },
-      { status: 401 }
-    );
-  }
+    const authHeader = req.headers.get("authorization");
 
-  // Get the check-in information from the request.
-  const { moodScore, note, latitude, longitude } = await req.json();
+    const bearerToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : null;
 
-  // Save the check-in to the database.
-  const checkIn = await prisma.checkIn.create({
-    data: {
-      userId,
+    // Use the cookie if it exists.
+    // Otherwise use the mobile Bearer token.
+    const token = cookieToken || bearerToken;
+
+    const userId = token
+      ? await verifySessionToken(token)
+      : null;
+
+    // Make sure the user is authenticated.
+    if (!userId) {
+      return NextResponse.json(
+        {
+          error: "Not authenticated",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // Get the check-in information from the request.
+    const {
       moodScore,
       note,
       latitude,
       longitude,
-    },
-  });
+    } = await req.json();
 
-  // Check whether this check-in should trigger a trusted-contact alert.
-const alertResult = await maybeSendAlert(checkIn);
+    // Save the check-in to the database.
+    const checkIn = await prisma.checkIn.create({
+      data: {
+        userId,
+        moodScore,
+        note,
+        latitude,
+        longitude,
+      },
+    });
 
-// Choose a compliment to show after the check-in.
-const compliment = await randomCompliment();
+    // Check whether this check-in should trigger
+    // a trusted-contact alert.
+    const alertResult = await maybeSendAlert(checkIn);
 
-  // Send the saved check-in back to the app.
-  // Send the check-in and compliment back to the frontend.
-return NextResponse.json({
-  checkIn,
-  alertSent: alertResult.sent,
-  compliment,
-});
-}
+    // Choose an encouragement message.
+    const compliment = await randomCompliment();
 
-// Handles getting a user's previous check-ins.
-export async function GET(req: NextRequest) {
-  // Get the user's session from their browser cookie.
-  const token = req.cookies.get("session")?.value;
+    // Send the result back to the frontend.
+    return NextResponse.json({
+      checkIn,
+      alertSent: alertResult.sent,
+      compliment,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to create check-in:",
+      error
+    );
 
-  // Check that the session is valid.
-  const userId = token ? await verifySessionToken(token) : null;
-
-  // Stop if the user isn't logged in.
-  if (!userId) {
     return NextResponse.json(
-      { error: "Not authenticated" },
-      { status: 401 }
+      {
+        error: "Failed to create check-in",
+      },
+      {
+        status: 500,
+      }
     );
   }
+}
 
-  // Get this user's check-ins from the database.
-  const checkIns = await prisma.checkIn.findMany({
-    where: {
-      userId,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: {
-      id: true,
-      moodScore: true,
-      note: true,
-      createdAt: true,
-    },
-  });
+export async function GET(req: NextRequest) {
+  try {
+    // Support both:
+    // 1. Web browser session cookies
+    // 2. Mobile app Bearer tokens
 
-  return NextResponse.json({ checkIns });
+    const cookieToken = req.cookies.get("session")?.value;
+
+    const authHeader = req.headers.get("authorization");
+
+    const bearerToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : null;
+
+    const token = cookieToken || bearerToken;
+
+    const userId = token
+      ? await verifySessionToken(token)
+      : null;
+
+    // Make sure the user is authenticated.
+    if (!userId) {
+      return NextResponse.json(
+        {
+          error: "Not authenticated",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // Get this user's previous check-ins.
+    const checkIns = await prisma.checkIn.findMany({
+      where: {
+        userId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return NextResponse.json({
+      checkIns,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to load check-ins:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error: "Failed to load check-ins",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
 }

@@ -1,31 +1,47 @@
-// Creates a new anonymous user and gives them a session.
-
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
 import { createSessionToken } from "../../../lib/auth";
 
-// Runs when someone chooses "Continue anonymously".
 export async function POST() {
-  // Create a new anonymous user in the database.
-  const user = await prisma.user.create({
-    data: {
-      isAnonymous: true,
-    },
-  });
+  try {
+    // Create an anonymous user.
+    const user = await prisma.user.create({
+      data: {
+        isAnonymous: true,
+      },
+    });
 
-  // Create a session for that user.
-  const token = await createSessionToken(user.id);
+    // Create a 30-day session token.
+    const token = await createSessionToken(user.id);
 
-  // Send the user's ID back to the app.
-  const res = NextResponse.json({
-    userId: user.id,
-  });
+    // Return the token in JSON so the mobile app can store it.
+    const response = NextResponse.json({
+      userId: user.id,
+      token,
+    });
 
-  // Save the session in the browser.
-  res.cookies.set("session", token, {
-    httpOnly: true,
-    path: "/",
-  });
+    // Also keep the cookie for the web app.
+    response.cookies.set("session", token, {
+      httpOnly: true,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+      sameSite: "lax",
+    });
 
-  return res;
+    return response;
+  } catch (error) {
+    console.error(
+      "Failed to create anonymous session:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error: "Failed to create anonymous session",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
 }
