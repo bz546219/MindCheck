@@ -70,13 +70,25 @@ export default function Home() {
   useEffect(() => {
     async function loadCheckIns() {
       try {
-        const response = await fetch("/api/checkins");
+        let response = await fetch("/api/checkins");
 
-        if (!response.ok) {
-          throw new Error("Failed to load check-ins");
-        }
+if (response.status === 401) {
+  const authResponse = await fetch("/api/auth/anonymous", {
+    method: "POST",
+  });
 
-        const data = await response.json();
+  if (!authResponse.ok) {
+    throw new Error("Failed to create anonymous session");
+  }
+
+  response = await fetch("/api/checkins");
+}
+
+if (!response.ok) {
+  throw new Error("Failed to load check-ins");
+}
+
+const data = await response.json();
 
         setCheckIns(data.checkIns);
       } catch (error) {
@@ -185,19 +197,51 @@ export default function Home() {
     }
   }
 
+
+
+
+
+
+
+
   return (
-    <main className="min-h-screen bg-white p-8">
-      <div className="mx-auto flex w-full max-w-md flex-col items-center">
+<main className="min-h-screen bg-gradient-to-br from-violet-100 via-indigo-50 to-blue-100 px-4 py-10"><div className="mx-auto flex w-full max-w-3xl flex-col items-center">
 
         {/* Title */}
-        <h1 className="text-4xl font-bold text-black">
-          MindCheck
-        </h1>
+        <div className="mb-10 text-center">
+<div className="mb-3 text-3xl text-[#8299A8]">
+  ✦
+</div>
+  <h1 className="text-5xl font-semibold tracking-tight text-slate-900">
+    MindCheck
+  </h1>
 
-        <p className="mt-4 text-gray-600">
-          How are you feeling today?
-        </p>
+  <p className="mt-3 text-lg font-light tracking-wide text-slate-500">
+    A daily moment to check in with yourself.
+  </p>
+</div>
 
+
+
+
+
+
+
+
+
+
+
+
+
+<div className="w-full rounded-3xl border border-purple-100 bg-white p-8 shadow-xl shadow-purple-100/50">
+
+  <h2 className="text-2xl font-semibold text-slate-900">
+    How are you feeling today?
+  </h2>
+
+  <p className="mt-1 text-slate-500">
+    Choose a number that best represents your mood.
+  </p>
         {/* Mood scores */}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
@@ -262,6 +306,7 @@ export default function Home() {
             </p>
           </div>
         )}
+</div>
 
         {/* Support resources */}
         {resources.length > 0 && (
