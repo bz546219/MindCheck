@@ -3,10 +3,26 @@
 import { prisma } from "./prisma";
 import { Resend } from "resend";
 
-// Create a Resend email client using the API key from .env.
+// -----------------------------------------------------------------------
+// WHAT IS THIS FILE?
+// This file's job is: after someone submits a check-in, decide whether
+// it's low enough to notify their "trusted contact" (a person they've
+// chosen ahead of time, like a friend or family member), and if so,
+// send that person an email. It also keeps a paper trail (alertLog) of
+// every attempt, successful or not, so nothing sends silently or twice.
+// -----------------------------------------------------------------------
+
+// ---- SET UP THE EMAIL SENDING SERVICE ----
+// "Resend" is a third-party service that actually delivers emails for
+// us. We hand it our API key (kept secretly in the .env file, never
+// written directly in code) so it knows this request is really coming
+// from our app.
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Basic support message shown separately from the trusted-contact alert.
+// ---- A GENERAL SUPPORT MESSAGE ----
+// This is separate from the trusted-contact email below — it's a
+// general "you're not alone" message the app can show directly to the
+// user themselves (not their contact), if needed elsewhere in the app.
 const CRISIS_RESOURCES = {
   text:
     "If you're struggling right now, you're not alone. " +
@@ -14,13 +30,19 @@ const CRISIS_RESOURCES = {
     "or another person you trust.",
 };
 
-// Check whether a check-in is low enough to trigger an alert.
+// ---- MAIN FUNCTION: DECIDE WHETHER TO SEND AN ALERT, AND SEND IT ----
+// This gets called once per check-in, right after it's saved to the
+// database. It runs through a series of checks, and stops (returns
+// early) the moment it finds a reason NOT to send an alert.
 export async function maybeSendAlert(checkIn: {
   id: string;
   userId: string;
   moodScore: number;
 }) {
-  // Check whether this check-in has already triggered an alert.
+  // ---- CHECK 1: Has an alert already been sent for this exact check-in? ----
+  // This guards against accidentally emailing someone twice for the
+  // same check-in (e.g. if this function somehow got called more than
+  // once). We look up just the "alertSent" flag on this check-in.
   const existingCheckIn = await prisma.checkIn.findUnique({
     where: {
       id: checkIn.id,
@@ -30,7 +52,6 @@ export async function maybeSendAlert(checkIn: {
     },
   });
 
-  // Don't send the same alert twice.
   if (existingCheckIn?.alertSent) {
     return {
       sent: false,
@@ -38,14 +59,15 @@ export async function maybeSendAlert(checkIn: {
     };
   }
 
-  // Find the trusted contact connected to this user.
+  // ---- CHECK 2: Does this user even have a trusted contact set up? ----
+  // Not everyone will have added one. If they haven't, there's nobody
+  // to alert, so we stop here.
   const contact = await prisma.trustedContact.findUnique({
     where: {
       userId: checkIn.userId,
     },
   });
 
-  // If the user does not have a trusted contact, don't send anything.
   if (!contact) {
     return {
       sent: false,
@@ -53,8 +75,11 @@ export async function maybeSendAlert(checkIn: {
     };
   }
 
-  // Compare the mood score with the trusted contact's threshold.
-  // Example: threshold 3 means scores of 3 or lower trigger the alert.
+  // ---- CHECK 3: Is the mood score actually low enough to matter? ----
+  // Each user's trusted contact has a "thresholdScore" they agreed on
+  // (e.g. "alert me if their mood drops to 3 or below"). If today's
+  // mood score is ABOVE that threshold, everything's fine — no alert
+  // needed.
   if (checkIn.moodScore > contact.thresholdScore) {
     return {
       sent: false,
@@ -62,7 +87,9 @@ export async function maybeSendAlert(checkIn: {
     };
   }
 
-  // We need an email address in order to send an email.
+  // ---- CHECK 4: Do we actually have an email address to send to? ----
+  // We're only sending email alerts here (no text/phone), so if there's
+  // no email on file for this contact, we can't proceed.
   if (!contact.email) {
     return {
       sent: false,
@@ -70,14 +97,20 @@ export async function maybeSendAlert(checkIn: {
     };
   }
 
+  // If we've made it this far, all the conditions are met: there's a
+  // trusted contact, their email is on file, and the mood score is low
+  // enough to cross the threshold. Time to actually send the email.
   try {
-    // Send the trusted-contact email.
+    // Ask Resend to send the email. This returns either "data" (details
+    // about the successful send) or "error" (what went wrong), not both.
     const { data, error } = await resend.emails.send({
       from: "MindCheck Alerts <onboarding@resend.dev>",
       to: contact.email,
       subject: "MindCheck: a check-in you may want to know about",
 
-      // Keep the message general and avoid including private check-in details.
+      // Note: the message is intentionally vague about details (no
+      // exact mood score, no notes) to protect the user's privacy —
+      // it just nudges the contact to reach out personally.
       text:
         `${contact.name}, someone who listed you as a trusted contact ` +
         `recorded a low wellbeing check-in today. ` +
@@ -85,14 +118,18 @@ export async function maybeSendAlert(checkIn: {
         `This is an automated message and not a substitute for direct conversation.`,
     });
 
-    // Log the Resend response for development/testing.
+    // Print the raw response for our own debugging while developing.
     console.log("[Resend] data:", data);
 
-    // If Resend reports an error, do NOT mark the alert as sent.
+    // ---- IF RESEND REPORTS A PROBLEM ----
+    // Important: if the send failed, we do NOT mark the check-in as
+    // "alertSent." That way, if this ever gets retried, it's still
+    // eligible to try sending again instead of being silently skipped
+    // forever.
     if (error) {
       console.error("[Resend] error:", error);
 
-      // Record the failed attempt.
+      // Still log the attempt (as "failed") so there's a record of it.
       await prisma.alertLog.create({
         data: {
           checkInId: checkIn.id,
@@ -107,7 +144,8 @@ export async function maybeSendAlert(checkIn: {
       };
     }
 
-    // Record the successful alert.
+    // ---- SUCCESS PATH ----
+    // Log that the email genuinely went out.
     await prisma.alertLog.create({
       data: {
         checkInId: checkIn.id,
@@ -116,7 +154,9 @@ export async function maybeSendAlert(checkIn: {
       },
     });
 
-    // Mark this check-in so another alert is not sent for it.
+    // Mark the check-in itself so this exact same check-in never
+    // triggers a second email later (this is what Check 1 above looks
+    // at).
     await prisma.checkIn.update({
       where: {
         id: checkIn.id,
@@ -126,15 +166,18 @@ export async function maybeSendAlert(checkIn: {
       },
     });
 
-    // Tell the caller that the alert was successfully sent.
+    // Let whoever called this function know it worked.
     return {
       sent: true,
     };
   } catch (error) {
-    // Log unexpected errors.
+    // This catches anything unexpected — e.g. a network failure talking
+    // to Resend, not just a normal "error" response from it.
     console.error("[Alert Error]:", error);
 
-    // Record the failed alert attempt.
+    // Try to log the failure too, but wrap THAT in its own try/catch —
+    // if even the logging fails (e.g. database is briefly down), we
+    // don't want that secondary failure to crash anything further.
     try {
       await prisma.alertLog.create({
         data: {
@@ -154,7 +197,10 @@ export async function maybeSendAlert(checkIn: {
   }
 }
 
-// Returns the support message when the app needs it.
+// ---- SMALL HELPER: RETURN THE GENERAL SUPPORT MESSAGE ----
+// Any other part of the app that wants to display the general
+// "you're not alone" message (defined near the top of this file) can
+// call this instead of retyping the message itself.
 export function getCrisisMessage() {
   return CRISIS_RESOURCES.text;
 }
